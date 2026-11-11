@@ -138,6 +138,9 @@ const RovingFocusGroupImpl = /* @__PURE__ */ React.forwardRef<
   const handleEntryFocus = useCallbackRef(onEntryFocus);
   const getItems = useCollection(__scopeRovingFocusGroup);
   const isClickFocusRef = React.useRef(false);
+  // Tracks whether the group is still the focused element of its root node while
+  // the window itself loses focus (e.g. the user switches tabs or apps).
+  const isFocusedWhileDocumentBlurredRef = React.useRef(false);
   const [focusableItemsCount, setFocusableItemsCount] = React.useState(0);
 
   React.useEffect(() => {
@@ -147,6 +150,22 @@ const RovingFocusGroupImpl = /* @__PURE__ */ React.forwardRef<
       return () => node.removeEventListener(ENTRY_FOCUS, handleEntryFocus);
     }
   }, [handleEntryFocus]);
+
+  React.useEffect(() => {
+    const node = ref.current;
+    const ownerWindow = node?.ownerDocument.defaultView;
+    if (node && ownerWindow) {
+      // If window focus comes back to something other than the group, the flag
+      // is stale and must not affect a later focus within the group.
+      const handleWindowFocus = () => {
+        if (!isFocusedInRootNode(node)) {
+          isFocusedWhileDocumentBlurredRef.current = false;
+        }
+      };
+      ownerWindow.addEventListener('focus', handleWindowFocus);
+      return () => ownerWindow.removeEventListener('focus', handleWindowFocus);
+    }
+  }, []);
 
   return (
     <RovingFocusProvider
@@ -184,8 +203,19 @@ const RovingFocusGroupImpl = /* @__PURE__ */ React.forwardRef<
           // We do this because Safari doesn't focus buttons when clicked, and
           // instead, the wrapper will get focused and not through a bubbling event.
           const isKeyboardFocus = !isClickFocusRef.current;
+          // When the window regains focus, the browser refires `focus` on the
+          // element that was focused before. This is a restoration, not the
+          // user entering the group, so moving focus into an item (and
+          // scrolling it into view) must be skipped.
+          const isFocusRestoration =
+            isFocusedWhileDocumentBlurredRef.current && event.relatedTarget === null;
 
-          if (event.target === event.currentTarget && isKeyboardFocus && !isTabbingBackOut) {
+          if (
+            event.target === event.currentTarget &&
+            isKeyboardFocus &&
+            !isTabbingBackOut &&
+            !isFocusRestoration
+          ) {
             const entryFocusEvent = new CustomEvent(ENTRY_FOCUS, EVENT_OPTIONS);
             event.currentTarget.dispatchEvent(entryFocusEvent);
 
@@ -202,8 +232,15 @@ const RovingFocusGroupImpl = /* @__PURE__ */ React.forwardRef<
           }
 
           isClickFocusRef.current = false;
+          isFocusedWhileDocumentBlurredRef.current = false;
         })}
-        onBlur={composeEventHandlers(props.onBlur, () => setIsTabbingBackOut(false))}
+        onBlur={composeEventHandlers(props.onBlur, (event) => {
+          // If the group is still the active element of its root node, the
+          // window itself is losing focus rather than focus moving away.
+          isFocusedWhileDocumentBlurredRef.current =
+            event.target === event.currentTarget && isFocusedInRootNode(event.currentTarget);
+          setIsTabbingBackOut(false);
+        })}
       />
     </RovingFocusProvider>
   );
@@ -375,6 +412,16 @@ function getFocusIntent(event: React.KeyboardEvent, orientation?: Orientation, d
     return undefined;
   }
   return MAP_KEY_TO_FOCUS_INTENT[key];
+}
+
+/**
+ * Checks whether `node` is the focused element within its root node. Using the
+ * root node rather than `document.activeElement` keeps this correct when the
+ * group is rendered inside a shadow root.
+ */
+function isFocusedInRootNode(node: HTMLElement) {
+  const rootNode = node.getRootNode();
+  return 'activeElement' in rootNode && rootNode.activeElement === node;
 }
 
 function focusFirst(candidates: HTMLElement[], preventScroll = false) {
