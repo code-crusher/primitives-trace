@@ -540,6 +540,67 @@ function fakeViewportScroll(metrics: {
   fireEvent.scroll(viewport);
 }
 
+// Regression tests for https://github.com/radix-ui/primitives/issues/4250
+describe('aria-hide on open', () => {
+  afterEach(cleanupModal);
+
+  it('should not hide an ancestor of the focused element when opened with the keyboard', async () => {
+    // Chrome blocks and warns about `aria-hidden` being set on an ancestor of the
+    // focused element. When a `Select` is opened with the keyboard, the trigger
+    // holds focus until focus is moved into the content, so the outside must not
+    // be hidden before that happens.
+    const violations: Array<{ element: Element; active: Element | null }> = [];
+    const setAttribute = Element.prototype.setAttribute;
+    const setAttributeSpy = vi
+      .spyOn(Element.prototype, 'setAttribute')
+      .mockImplementation(function (this: Element, name: string, value: string) {
+        if (name === 'aria-hidden' && value !== 'false') {
+          const active = this.ownerDocument.activeElement;
+          if (active && this.contains(active)) {
+            violations.push({ element: this, active });
+          }
+        }
+        return setAttribute.call(this, name, value);
+      });
+
+    render(
+      <section>
+        <Select.Root defaultValue="apple">
+          <Select.Trigger aria-label="Kind">
+            <Select.Value />
+          </Select.Trigger>
+          <Select.Portal>
+            <Select.Content>
+              <Select.Viewport>
+                <Select.Item value="apple">
+                  <Select.ItemText>Apple</Select.ItemText>
+                </Select.Item>
+                <Select.Item value="banana">
+                  <Select.ItemText>Banana</Select.ItemText>
+                </Select.Item>
+              </Select.Viewport>
+            </Select.Content>
+          </Select.Portal>
+        </Select.Root>
+      </section>,
+    );
+
+    const trigger = screen.getByRole('combobox');
+    act(() => trigger.focus());
+
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: 'Enter' });
+      fireEvent.keyUp(trigger, { key: 'Enter' });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    setAttributeSpy.mockRestore();
+
+    expect(violations).toEqual([]);
+    expect(document.activeElement).toBe(screen.getByRole('option', { name: 'Apple' }));
+  });
+});
+
 describe('Select.Trigger', () => {
   afterEach(cleanupModal);
 
