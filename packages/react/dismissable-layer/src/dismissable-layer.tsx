@@ -176,6 +176,18 @@ const DismissableLayer = /* @__PURE__ */ React.forwardRef<
         return;
       }
 
+      // The listener is attached while this layer believes it is the highest one,
+      // but a layer mounted since our last render may already have been added to
+      // the layer set. Re-check the set at event time so an escape pressed in
+      // that window is ignored (until the new layer's registration has
+      // propagated) instead of dismissing this layer.
+      //
+      // See https://github.com/radix-ui/primitives/issues/4143
+      const isHighestLayer = index === context.layers.size - 1;
+      if (!isHighestLayer) {
+        return;
+      }
+
       onEscapeKeyDown?.(event);
       if (!event.defaultPrevented && onDismiss) {
         event.preventDefault();

@@ -647,6 +647,78 @@ describe('given a modal Dialog containing a nested modal layer (eg. a DropdownMe
   });
 });
 
+describe('given two stacked modal Dialogs', () => {
+  afterEach(cleanupModal);
+
+  // Regression test for https://github.com/radix-ui/primitives/issues/4143
+  it('does not dismiss the lower dialog when escape is pressed while the upper one is still registering', () => {
+    const onOpenChangeA = vi.fn();
+    const onOpenChangeB = vi.fn();
+
+    function StackedDialogsTest() {
+      const [openA, setOpenA] = React.useState(true);
+      const [openB, setOpenB] = React.useState(false);
+      return (
+        <>
+          <Dialog.Root
+            open={openA}
+            onOpenChange={(open) => {
+              onOpenChangeA(open);
+              setOpenA(open);
+            }}
+          >
+            <Dialog.Portal>
+              <Dialog.Overlay />
+              <Dialog.Content>
+                <Dialog.Title>{TITLE_TEXT}</Dialog.Title>
+                <button type="button" onClick={() => setOpenB(true)}>
+                  open-b
+                </button>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+          {openB ? (
+            <Dialog.Root
+              open={openB}
+              onOpenChange={(open) => {
+                onOpenChangeB(open);
+                setOpenB(open);
+              }}
+            >
+              <Dialog.Portal>
+                <Dialog.Overlay />
+                <Dialog.Content>
+                  <Dialog.Title>B</Dialog.Title>
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog.Root>
+          ) : null}
+        </>
+      );
+    }
+
+    render(<StackedDialogsTest />);
+
+    // Radix dispatches `dismissableLayer.update` from the mount effect that adds
+    // the second dialog's layer to the set, before the first dialog's layer has
+    // re-rendered with the updated index.
+    document.addEventListener(
+      'dismissableLayer.update',
+      () => {
+        fireEvent.keyDown(document, { key: 'Escape' });
+      },
+      { once: true },
+    );
+
+    fireEvent.click(screen.getByText('open-b'));
+
+    // The escape lands while both layers are still registered, so neither dialog
+    // may dismiss. In particular, the lower dialog must stay open.
+    expect(onOpenChangeA).not.toHaveBeenCalledWith(false);
+    expect(screen.getByText('open-b')).toBeInTheDocument();
+  });
+});
+
 describe('given a modal Dialog with an Overlay', () => {
   async function waitForDocumentPointerDownListener() {
     await act(async () => {

@@ -640,6 +640,50 @@ describe('DismissableLayer', () => {
     expect(onEscapeKeyDown).toHaveBeenCalledTimes(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  // Regression test for https://github.com/radix-ui/primitives/issues/4143
+  it('ignores an escape pressed while a higher layer is still registering', () => {
+    const onFirstLayerDismiss = vi.fn();
+    const onSecondLayerDismiss = vi.fn();
+
+    function Test() {
+      const [openSecond, setOpenSecond] = React.useState(false);
+      return (
+        <>
+          <DismissableLayer.Root onDismiss={onFirstLayerDismiss}>
+            <button type="button" onClick={() => setOpenSecond(true)}>
+              add layer
+            </button>
+          </DismissableLayer.Root>
+          {openSecond ? (
+            <DismissableLayer.Root onDismiss={onSecondLayerDismiss}>
+              <button type="button">second layer</button>
+            </DismissableLayer.Root>
+          ) : null}
+        </>
+      );
+    }
+
+    render(<Test />);
+
+    // When the second layer registers, it dispatches `dismissableLayer.update`
+    // from within its mount effect, before the first layer has re-rendered and
+    // detached its (now stale) escape listener.
+    document.addEventListener(
+      'dismissableLayer.update',
+      () => {
+        fireEvent.keyDown(document, { key: 'Escape' });
+      },
+      { once: true },
+    );
+
+    fireEvent.click(screen.getByText('add layer'));
+
+    // The first layer was the highest one when it last rendered, so it still has
+    // an escape listener attached — but it must not act on it.
+    expect(onFirstLayerDismiss).not.toHaveBeenCalled();
+    expect(onSecondLayerDismiss).not.toHaveBeenCalled();
+  });
 });
 
 describe('DismissableLayer.Root', () => {
