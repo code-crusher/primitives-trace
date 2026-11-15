@@ -344,6 +344,18 @@ const PopoverContentNonModal = /* @__PURE__ */ React.forwardRef<
     const hasInteractedOutsideRef = React.useRef(false);
     const hasPointerDownOutsideRef = React.useRef(false);
 
+    // When the content stays mounted between opens (eg. while animating out),
+    // state recorded during the previous open would leak into the next one
+    // because `onCloseAutoFocus` only runs when the content unmounts, so we
+    // reset it when the popover opens. See:
+    // https://github.com/radix-ui/primitives/issues/4246
+    React.useEffect(() => {
+      if (context.open) {
+        hasInteractedOutsideRef.current = false;
+        hasPointerDownOutsideRef.current = false;
+      }
+    }, [context.open]);
+
     return (
       <PopoverContentImpl
         {...props}
@@ -365,8 +377,15 @@ const PopoverContentNonModal = /* @__PURE__ */ React.forwardRef<
         onInteractOutside={(event) => {
           props.onInteractOutside?.(event);
 
+          const target = event.target as HTMLElement;
+          const targetIsTrigger = context.triggerRef.current?.contains(target);
+
           if (!event.defaultPrevented) {
-            hasInteractedOutsideRef.current = true;
+            // The trigger reopens the popover rather than interacting with it,
+            // so pressing it should not stop focus returning to it on close.
+            if (!targetIsTrigger) {
+              hasInteractedOutsideRef.current = true;
+            }
             if (event.detail.originalEvent.type === 'pointerdown') {
               hasPointerDownOutsideRef.current = true;
             }
@@ -375,8 +394,6 @@ const PopoverContentNonModal = /* @__PURE__ */ React.forwardRef<
           // Prevent dismissing when clicking the trigger.
           // As the trigger is already setup to close, without doing so would
           // cause it to close and immediately open.
-          const target = event.target as HTMLElement;
-          const targetIsTrigger = context.triggerRef.current?.contains(target);
           if (targetIsTrigger) event.preventDefault();
 
           // On Safari if the trigger is inside a container with tabIndex={0}, when clicked

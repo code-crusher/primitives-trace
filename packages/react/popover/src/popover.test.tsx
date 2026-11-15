@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { RenderResult } from '@testing-library/react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import * as Popover from './popover';
 
@@ -729,6 +729,98 @@ function cleanupModal() {
   // A modal popover sets this on the `body` and only restores it on close.
   document.body.style.pointerEvents = '';
 }
+
+// Regression tests for https://github.com/radix-ui/primitives/issues/4246
+describe('given a non-modal Popover whose content stays mounted while animating out', () => {
+  // `DismissableLayer` registers its `pointerdown` listener in a `setTimeout`.
+  const tick = () =>
+    act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+  function firePointerMouseClick(target: Element) {
+    fireEvent.pointerDown(target, { pointerType: 'mouse' });
+    fireEvent.mouseDown(target);
+    fireEvent.pointerUp(target, { pointerType: 'mouse' });
+    fireEvent.mouseUp(target);
+    fireEvent.click(target);
+  }
+
+  const AnimatingPopover = ({ animatingOut }: { animatingOut: boolean }) => (
+    <Popover.Root defaultOpen>
+      <Popover.Trigger>{TRIGGER_TEXT}</Popover.Trigger>
+      <Popover.Portal forceMount={animatingOut ? true : undefined}>
+        <Popover.Content forceMount={animatingOut ? true : undefined}>
+          <Popover.Close>{CONTENT_TEXT}</Popover.Close>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+
+  afterEach(cleanup);
+
+  it('should focus the trigger on close after the trigger reopened it', async () => {
+    const { rerender } = render(<AnimatingPopover animatingOut />);
+    await tick();
+    const trigger = screen.getByText(TRIGGER_TEXT);
+
+    // Close, then reopen with the trigger before the content unmounts.
+    fireEvent.click(screen.getByText(CONTENT_TEXT));
+    firePointerMouseClick(trigger);
+    await tick();
+
+    // Close again; the trigger should regain focus.
+    fireEvent.click(screen.getByText(CONTENT_TEXT));
+    rerender(<AnimatingPopover animatingOut={false} />);
+    await tick();
+
+    expect(trigger).toHaveFocus();
+  });
+
+  it('should focus the trigger on close after an outside interaction closed it', async () => {
+    const { rerender } = render(<AnimatingPopover animatingOut />);
+    await tick();
+    const trigger = screen.getByText(TRIGGER_TEXT);
+
+    // Close with an outside click, then reopen with the trigger before the
+    // content unmounts.
+    const outside = render(<button>outside</button>).getByText('outside');
+    firePointerMouseClick(outside);
+    await tick();
+    fireEvent.click(trigger);
+    await tick();
+
+    // Close again; the trigger should regain focus.
+    fireEvent.click(screen.getByText(CONTENT_TEXT));
+    rerender(<AnimatingPopover animatingOut={false} />);
+    await tick();
+
+    expect(trigger).toHaveFocus();
+  });
+
+  it('should dismiss when focus moves outside after an outside interaction closed it', async () => {
+    const { rerender } = render(<AnimatingPopover animatingOut />);
+    await tick();
+    const trigger = screen.getByText(TRIGGER_TEXT);
+
+    // Close with an outside click, then reopen with the trigger before the
+    // content unmounts.
+    const outside = render(<button>outside</button>).getByText('outside');
+    firePointerMouseClick(outside);
+    await tick();
+    fireEvent.click(trigger);
+    await tick();
+
+    // Focus moving outside should dismiss the reopened popover.
+    outside.focus();
+    await tick();
+
+    rerender(<AnimatingPopover animatingOut={false} />);
+    await tick();
+
+    expect(screen.queryByText(CONTENT_TEXT)).not.toBeInTheDocument();
+  });
+});
 
 // Regression test for https://github.com/radix-ui/primitives/issues/4197
 describe('handlers with a narrower parameter type than the prop', () => {
