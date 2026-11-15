@@ -478,6 +478,66 @@ describe('DismissableLayer', () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
+  // Regression test for https://github.com/radix-ui/primitives/issues/4249
+  it('dismisses on the first outside press after a nested layer opened via pointer down closes', async () => {
+    const onParentDismiss = vi.fn();
+
+    function NestedLayer() {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <>
+          <button
+            type="button"
+            onPointerDown={(event) => {
+              // Opening the nested layer synchronously in the trigger's
+              // `pointerdown` tears down the parent layer's document listener
+              // before the press reaches `document` (in a real browser this
+              // happens when the effect re-runs as `isPointerEventsEnabled`
+              // flips). `stopPropagation` reproduces the same outcome: the
+              // parent never observes the press, so it must not treat the
+              // press as having come from inside its React tree.
+              event.stopPropagation();
+              setOpen(true);
+            }}
+          >
+            trigger
+          </button>
+          {open && (
+            <DismissableLayer.Root disableOutsidePointerEvents onDismiss={() => setOpen(false)}>
+              <button type="button">child</button>
+            </DismissableLayer.Root>
+          )}
+        </>
+      );
+    }
+
+    render(
+      <>
+        <DismissableLayer.Root disableOutsidePointerEvents onDismiss={onParentDismiss}>
+          <NestedLayer />
+        </DismissableLayer.Root>
+        <button type="button">outside</button>
+      </>,
+    );
+    await waitForDocumentPointerDownListener();
+
+    // Open the nested layer by pressing the trigger with the mouse. The press
+    // passes through the parent layer's `onPointerDownCapture`, which marks it
+    // as inside the React tree.
+    fireEvent.pointerDown(screen.getByText('trigger'));
+    await waitForDocumentPointerDownListener();
+
+    // Close the nested layer with Escape. No press is involved, so the
+    // parent's "inside" mark is not reset by a document-level `pointerdown`.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitForDocumentPointerDownListener();
+
+    // The very next outside press must dismiss the parent.
+    fireEvent.pointerDown(screen.getByText('outside'));
+
+    expect(onParentDismiss).toHaveBeenCalledTimes(1);
+  });
+
   // Regression test for https://github.com/radix-ui/primitives/issues/3971
   it('does not dismiss a deferred parent when a child layer dismisses first', async () => {
     const onParentDismiss = vi.fn();

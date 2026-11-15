@@ -106,6 +106,35 @@ test.describe('Select nested in Dialog', () => {
     await expect(page.getByText('dialog: open | select: closed', { exact: true })).toBeVisible();
     await expect(page.getByRole('option', { name: 'One' })).toHaveCount(0);
   });
+
+  test.describe('Select nested in Dialog with overlay', () => {
+  test.beforeEach(async ({ page }) => {
+    await visitStory(page, 'select--dismisses-dialog-after-select-closed-by-escape');
+  });
+
+  // Regression test for https://github.com/radix-ui/primitives/issues/4249
+  test('dismisses the dialog on the first outside press after the select opened by mouse closes', async ({
+    page,
+  }) => {
+    await page.getByText('Open dialog', { exact: true }).click();
+    await expect(page.getByText('dialog: open | select: closed', { exact: true })).toBeVisible();
+
+    // Open the select by pressing the trigger with the mouse. The press passes
+    // through the dialog's `onPointerDownCapture` before the select mounts, so
+    // the dialog's document `pointerdown` listener is torn down before it sees
+    // the press.
+    await page.getByRole('combobox', { name: /choose a value/i }).click();
+    await expect(page.getByText('dialog: open | select: open', { exact: true })).toBeVisible();
+
+    // Close the select with Escape. No press is involved, so the dialog's
+    // press-time state is not reset.
+    await page.keyboard.press('Escape');
+    await expect(page.getByText('dialog: open | select: closed', { exact: true })).toBeVisible();
+
+    // The next outside press on the overlay must close the dialog.
+    await page.getByTestId('dialog-overlay').click({ position: { x: 8, y: 8 } });
+    await expect(page.getByText(/dialog: closed/)).toBeVisible();
+  });
 });
 
 test.describe('Select nested in Popover', () => {
