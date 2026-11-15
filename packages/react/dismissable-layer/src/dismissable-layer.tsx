@@ -151,8 +151,6 @@ const DismissableLayer = /* @__PURE__ */ React.forwardRef<
       if (!event.defaultPrevented) onDismiss?.();
     }, ownerDocument);
 
-    const isHighestLayer = node ? index === layers.length - 1 : false;
-
     // Stabilize via `useCallbackRef` rather than `useEffectEvent`: React's
     // native `useEffectEvent` returns a stale closure inside `forwardRef`
     // components on React 19.2.x, which caused escape handlers to observe
@@ -164,6 +162,20 @@ const DismissableLayer = /* @__PURE__ */ React.forwardRef<
     // - https://github.com/react/react/pull/34831
     const handleKeyDown = useCallbackRef((event: KeyboardEvent) => {
       if (event.key !== 'Escape') {
+        return;
+      }
+
+      // Decide whether this layer is the top-most one from the live layer set at
+      // event time, not from the index captured at render time. A layer can be
+      // registered in the set after its last render (eg when it mounts inside a
+      // discrete/flushed update), in which case its render-time index is stale
+      // and would ignore the Escape. The listener is kept attached while mounted
+      // so the top layer can always respond to the key.
+      //
+      // See https://github.com/radix-ui/primitives/issues/4253
+      const activeLayers = Array.from(context.layers);
+      const isHighestLayer = node != null && activeLayers[activeLayers.length - 1] === node;
+      if (!isHighestLayer) {
         return;
       }
 
@@ -184,13 +196,13 @@ const DismissableLayer = /* @__PURE__ */ React.forwardRef<
     });
 
     React.useEffect(() => {
-      if (!isHighestLayer) {
+      if (!node) {
         return;
       }
 
       ownerDocument.addEventListener('keydown', handleKeyDown, { capture: true });
       return () => ownerDocument.removeEventListener('keydown', handleKeyDown, { capture: true });
-    }, [ownerDocument, isHighestLayer, handleKeyDown]);
+    }, [ownerDocument, node, handleKeyDown]);
 
     React.useEffect(() => {
       if (!node) return;

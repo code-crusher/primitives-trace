@@ -602,6 +602,96 @@ describe('DismissableLayer', () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
+  // Regression test for https://github.com/radix-ui/primitives/issues/4253
+  it('dismisses the top layer when its registration did not trigger a re-render', () => {
+    const onParentDismiss = vi.fn();
+    const onChildDismiss = vi.fn();
+
+    function Test() {
+      const [showChild, setShowChild] = React.useState(false);
+      return (
+        <>
+          <DismissableLayer.Root onDismiss={onParentDismiss}>
+            <button type="button" onClick={() => setShowChild(true)}>
+              parent
+            </button>
+          </DismissableLayer.Root>
+          {showChild && (
+            <DismissableLayer.Root onDismiss={onChildDismiss}>
+              <button type="button">child</button>
+            </DismissableLayer.Root>
+          )}
+        </>
+      );
+    }
+
+    render(<Test />);
+
+    // A layer learns about changes to the layer stack through the
+    // `dismissableLayer.update` event. When the top layer registers before its
+    // own update listener attaches (eg when it mounts inside a discrete update),
+    // it never re-renders and its render-time layer index stays stale. Block the
+    // event to freeze that state deterministically.
+    const blockUpdateEvent = (event: Event) => event.stopImmediatePropagation();
+    document.addEventListener('dismissableLayer.update', blockUpdateEvent, true);
+    try {
+      fireEvent.click(screen.getByText('parent'));
+      // The child has registered itself on top of the parent, but neither layer
+      // has re-rendered since, so the child's render-time index is still `-1`.
+      fireEvent.keyDown(document, { key: 'Escape' });
+    } finally {
+      document.removeEventListener('dismissableLayer.update', blockUpdateEvent, true);
+    }
+
+    expect(onChildDismiss).toHaveBeenCalledTimes(1);
+    expect(onParentDismiss).not.toHaveBeenCalled();
+  });
+
+  it('does not dismiss a lower layer when the live top layer handles the escape key', () => {
+    const onParentDismiss = vi.fn();
+    const onChildDismiss = vi.fn();
+
+    function Test() {
+      const [showChild, setShowChild] = React.useState(false);
+      return (
+        <>
+          <DismissableLayer.Root onDismiss={onParentDismiss}>
+            <button type="button" onClick={() => setShowChild(true)}>
+              parent
+            </button>
+          </DismissableLayer.Root>
+          {showChild && (
+            <DismissableLayer.Root
+              onDismiss={() => {
+                onChildDismiss();
+                setShowChild(false);
+              }}
+            >
+              <button type="button">child</button>
+            </DismissableLayer.Root>
+          )}
+        </>
+      );
+    }
+
+    render(<Test />);
+
+    const blockUpdateEvent = (event: Event) => event.stopImmediatePropagation();
+    document.addEventListener('dismissableLayer.update', blockUpdateEvent, true);
+    try {
+      fireEvent.click(screen.getByText('parent'));
+      // The child is the live top layer, so the first escape dismisses it and
+      // not the parent, even though neither layer has re-rendered since it
+      // registered and the parent's render-time index says it is on top.
+      fireEvent.keyDown(document, { key: 'Escape' });
+    } finally {
+      document.removeEventListener('dismissableLayer.update', blockUpdateEvent, true);
+    }
+
+    expect(onChildDismiss).toHaveBeenCalledTimes(1);
+    expect(onParentDismiss).not.toHaveBeenCalled();
+  });
+
   it('leaves an escape key that belongs to an IME composition to the input method', () => {
     const onEscapeKeyDown = vi.fn();
     const onDismiss = vi.fn();
