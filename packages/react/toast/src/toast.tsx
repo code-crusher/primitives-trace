@@ -15,8 +15,11 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 
 import type { Scope } from '@radix-ui/react-context';
 
-const startTransition: ((scope: React.TransitionFunction) => void) | undefined =
-  (React as any)[' startTransition '.trim().toString()] || (() => undefined);
+// Left `undefined` on React versions without `startTransition` (e.g. React 17)
+// so `scheduleUpdate` applies the update synchronously instead of dropping it.
+const startTransition: ((scope: React.TransitionFunction) => void) | undefined = (React as any)[
+  ' startTransition '.trim().toString()
+];
 
 /* -------------------------------------------------------------------------------------------------
  * ToastProvider

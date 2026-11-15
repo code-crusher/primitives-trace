@@ -112,8 +112,12 @@ interface SlottableComponent extends React.FC<SlottableProps> {
 }
 
 /* @__NO_SIDE_EFFECTS__ */ export function createSlottable(ownerName: string) {
-  const Slottable: SlottableComponent = (props) =>
-    'child' in props ? props.children(props.child) : props.children;
+  const Slottable: SlottableComponent = (props) => {
+    const children = 'child' in props ? props.children(props.child) : props.children;
+    // React < 18 throws "Nothing was returned from render" when a component returns
+    // `undefined` (e.g. a self-closing `<Slottable />`). Fall back to `null` instead.
+    return children ?? null;
+  };
 
   Slottable.displayName = `${ownerName}.Slottable`;
   Slottable.__radixId = SLOTTABLE_IDENTIFIER;
