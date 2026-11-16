@@ -574,6 +574,98 @@ describe('given two overlapping modal Dialogs (forceMount)', () => {
   });
 });
 
+// Regression test for https://github.com/radix-ui/primitives/issues/4226
+//
+// When a `Suspense` boundary hides and then reveals an open `Dialog`, the
+// `FocusScope`'s mount effect cleanup schedules a `setTimeout` that removes the
+// scope from the focus stack. The reveal re-runs the effect (re-adding the
+// scope) before that timer fires, so the stale timer then removes the scope
+// while it is still mounted and trapping focus. A second modal layer opened
+// afterwards can no longer pause it, so both traps are active and fight over
+// focus.
+describe('given a modal Dialog hidden and revealed by a Suspense boundary', () => {
+  async function wait(ms: number) {
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, ms));
+    });
+  }
+
+  afterEach(cleanupModal);
+
+  it('keeps the first dialog paused when a second modal layer opens', async () => {
+    let resolvePending: (() => void) | undefined = undefined;
+    let pending: { promise: Promise<void> } | null = null;
+
+    function MaybeSuspend() {
+      if (pending) throw pending.promise;
+      return null;
+    }
+
+    function SuspenseDialogTest() {
+      const [suspend, setSuspend] = React.useState(false);
+      const [confirm, setConfirm] = React.useState(false);
+      return (
+        <React.Suspense fallback={<p>Loading</p>}>
+          <button type="button" onClick={() => setSuspend(true)}>
+            Suspend
+          </button>
+          <Dialog.Root open>
+            <Dialog.Portal>
+              <Dialog.Content aria-describedby={undefined}>
+                <Dialog.Title>Edit</Dialog.Title>
+                <input aria-label="Field" />
+                <button type="button" onClick={() => setConfirm(true)}>
+                  Open confirm
+                </button>
+                {suspend && <MaybeSuspend />}
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+          <Dialog.Root open={confirm} onOpenChange={setConfirm}>
+            <Dialog.Portal>
+              <Dialog.Content aria-describedby={undefined}>
+                <Dialog.Title>Discard?</Dialog.Title>
+                <Dialog.Close>Cancel</Dialog.Close>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+        </React.Suspense>
+      );
+    }
+
+    render(<SuspenseDialogTest />);
+    await wait(200);
+
+    // Suspend the boundary so the open dialog is replaced by the fallback and
+    // then reveal it again.
+    pending = { promise: new Promise<void>((resolve) => (resolvePending = resolve)) };
+    act(() => {
+      fireEvent.click(screen.getByText('Suspend'));
+    });
+    expect(screen.getByText('Loading')).toBeInTheDocument();
+    await wait(50);
+    pending = null;
+    resolvePending?.();
+    await wait(50);
+    expect(screen.queryByText('Loading')).not.toBeInTheDocument();
+    await wait(50);
+
+    // Open the second modal layer on top of the first.
+    fireEvent.click(screen.getByText('Open confirm'));
+    await wait(100);
+    const confirmDialog = screen.getByText('Discard?').closest('[role="dialog"]')!;
+    expect(confirmDialog).toContainElement(document.activeElement);
+
+    // Moving focus to the first dialog must be reclaimed by the top layer.
+    // Without the fix the first dialog's stale timer removed it from the focus
+    // stack, so it is no longer paused and steals the focus back.
+    act(() => {
+      screen.getByLabelText('Field').focus();
+    });
+    expect(confirmDialog).toContainElement(document.activeElement);
+  });
+});
+
 describe('given a modal Dialog containing a nested modal layer (eg. a DropdownMenu)', () => {
   async function waitForDocumentPointerDownListener() {
     // `DismissableLayer` registers its `pointerdown` listener in a `setTimeout`.

@@ -87,8 +87,18 @@ const FocusScope = /* @__PURE__ */ React.forwardRef<FocusScopeElement, FocusScop
       [container],
     );
 
-    const focusScope = React.useRef({
+    // `mount` tracks the latest run of the mount effect below. The unmount
+    // timer checks it so a scope that was mounted again since its cleanup ran
+    // (eg. a `Suspense` boundary hid and revealed it) is not removed from the
+    // focus stack while it is still mounted and trapping focus.
+    const focusScope = React.useRef<{
+      paused: boolean;
+      mount: {} | undefined;
+      pause(): void;
+      resume(): void;
+    }>({
       paused: false,
+      mount: undefined,
       pause() {
         this.paused = true;
       },
@@ -164,7 +174,13 @@ const FocusScope = /* @__PURE__ */ React.forwardRef<FocusScopeElement, FocusScop
 
     React.useEffect(() => {
       if (container) {
+        const mount = {};
+        focusScope.mount = mount;
         focusScopesStack.add(focusScope);
+        // The scope added is the active one; it may have been left paused by
+        // its own stale unmount timer (or a replayed `add()` order when
+        // several layers were hidden and revealed together), so resume it.
+        focusScope.resume();
         const previouslyFocusedElement = document.activeElement as HTMLElement | null;
         const hasFocusedCandidate = container.contains(previouslyFocusedElement);
 
@@ -189,6 +205,10 @@ const FocusScope = /* @__PURE__ */ React.forwardRef<FocusScopeElement, FocusScop
           // We need to delay the focus a little to get around it for now.
           // See: https://github.com/facebook/react/issues/17894
           setTimeout(() => {
+            // If the effect ran again since this cleanup was created the scope
+            // is still mounted (eg. a `Suspense` boundary hid and revealed it),
+            // so it must stay on the stack.
+            if (focusScope.mount !== mount) return;
             const unmountEvent = new UnmountEvent(AUTOFOCUS_ON_UNMOUNT, EVENT_OPTIONS);
             container.addEventListener(AUTOFOCUS_ON_UNMOUNT, onUnmountAutoFocus);
             container.dispatchEvent(unmountEvent);

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import userEvent from '@testing-library/user-event';
-import { cleanup, render, waitFor, fireEvent, screen } from '@testing-library/react';
+import { act, cleanup, render, waitFor, fireEvent, screen } from '@testing-library/react';
 import * as FocusScope from './focus-scope';
 import type { RenderResult } from '@testing-library/react';
 import { afterEach, describe, it, beforeEach, vi, expect } from 'vitest';
