@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { createRoot } from 'react-dom/client';
+import { JSDOM } from 'jsdom';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { assertStableComposedRef } from '@repo/test-utils/ref-stability';
@@ -41,6 +43,69 @@ function firePointerMouseClick(target: Element) {
   fireEvent.pointerUp(target, { pointerType: 'mouse' });
   fireEvent.mouseUp(target);
   fireEvent.click(target);
+}
+
+// A separate window like a `window.open` popup. Its elements come from
+// another realm: `instanceof Node` is false for them even though they are
+// regular DOM nodes.
+// See https://github.com/radix-ui/primitives/issues/4219
+const popupDom = new JSDOM('<!doctype html><html><body></body></html>');
+const popupWindow = popupDom.window;
+const popupDocument = popupWindow.document;
+
+function createPopupElement(tagName: string, textContent: string) {
+  const element = popupDocument.createElement(tagName);
+  element.textContent = textContent;
+  return element;
+}
+
+/**
+ * Renders a layer into the popup window's document (like content portalled
+ * into a `window.open` popup) and returns its container plus a cleanup
+ * function.
+ */
+async function renderLayerIntoPopup(
+  onDismiss: () => void,
+  options: { deferPointerDownOutside?: boolean; extraContent?: React.ReactNode } = {},
+) {
+  const { deferPointerDownOutside = false, extraContent } = options;
+  const container = popupDocument.createElement('div');
+  popupDocument.body.append(container);
+
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <>
+        <DismissableLayer.Root
+          deferPointerDownOutside={deferPointerDownOutside}
+          onDismiss={onDismiss}
+        >
+          <button type="button">inside</button>
+        </DismissableLayer.Root>
+        {extraContent}
+      </>,
+    );
+  });
+
+  return {
+    container,
+    cleanupPopup() {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    },
+  };
+}
+
+/**
+ * Waits for the layer rendered into the popup window to register its
+ * outside event listeners.
+ */
+async function waitForPopupPointerDownListener() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 function ShadowButton() {
@@ -131,6 +196,84 @@ describe('DismissableLayer', () => {
     firePointerMouseClick(screen.getByText('outside'));
 
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  // Regression test for https://github.com/radix-ui/primitives/issues/4219
+  it('dismisses on a pointer down outside in another window', async () => {
+    const onDismiss = vi.fn();
+
+    const { cleanupPopup } = await renderLayerIntoPopup(onDismiss);
+    await waitForPopupPointerDownListener();
+
+    const outside = createPopupElement('button', 'popup outside');
+    popupDocument.body.append(outside);
+    outside.dispatchEvent(new popupWindow.MouseEvent('pointerdown', { bubbles: true }));
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    cleanupPopup();
+    outside.remove();
+  });
+
+  // Regression test for https://github.com/radix-ui/primitives/issues/4219
+  it('dismisses on a deferred outside tap on a dismiss surface in another window', async () => {
+    const onDismiss = vi.fn();
+
+    function Surface() {
+      const registerSurface = DismissableLayer.useDismissableLayerSurface();
+      return (
+        <div
+          ref={registerSurface}
+          data-popup-surface=""
+          onClick={(event) => event.stopPropagation()}
+        >
+          surface
+        </div>
+      );
+    }
+
+    const { container, cleanupPopup } = await renderLayerIntoPopup(onDismiss, {
+      deferPointerDownOutside: true,
+      extraContent: <Surface />,
+    });
+    await waitForPopupPointerDownListener();
+
+    const surface = container.querySelector('[data-popup-surface]')!;
+    surface.dispatchEvent(new popupWindow.MouseEvent('pointerdown', { bubbles: true }));
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    await act(async () => {
+      surface.dispatchEvent(new popupWindow.MouseEvent('click', { bubbles: true }));
+    });
+    await waitForPopupPointerDownListener();
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    cleanupPopup();
+  });
+
+  // Regression test for https://github.com/radix-ui/primitives/issues/4219
+  it('does not exempt a stopped interaction outside in another window without a dismiss surface', async () => {
+    const onDismiss = vi.fn();
+
+    const { cleanupPopup } = await renderLayerIntoPopup(onDismiss, {
+      deferPointerDownOutside: true,
+    });
+    await waitForPopupPointerDownListener();
+
+    const outside = createPopupElement('button', 'popup outside');
+    popupDocument.body.append(outside);
+    for (const eventName of ['mousedown', 'mouseup', 'click'] as const) {
+      outside.addEventListener(eventName, (event) => event.stopPropagation());
+    }
+
+    outside.dispatchEvent(new popupWindow.MouseEvent('pointerdown', { bubbles: true }));
+    outside.dispatchEvent(new popupWindow.MouseEvent('mousedown', { bubbles: true }));
+    outside.dispatchEvent(new popupWindow.MouseEvent('mouseup', { bubbles: true }));
+    outside.dispatchEvent(new popupWindow.MouseEvent('click', { bubbles: true }));
+    await waitForPopupPointerDownListener();
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    cleanupPopup();
+    outside.remove();
   });
 
   it('dismisses on focus outside', () => {

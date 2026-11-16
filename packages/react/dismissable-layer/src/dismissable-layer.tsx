@@ -124,7 +124,7 @@ const DismissableLayer = /* @__PURE__ */ React.forwardRef<
         dismissableSurfaces: context.dismissableSurfaces,
         shouldHandlePointerDownOutside: React.useCallback(
           (target: EventTarget | null) => {
-            if (!(target instanceof Node)) {
+            if (!isNode(target)) {
               return false;
             }
 
@@ -322,6 +322,13 @@ type FocusOutsideEvent = CustomEvent<{ originalEvent: FocusEvent }>;
 
 const IS_TRUE = () => true;
 
+// `instanceof Node` is realm-bound: it is false for nodes created in another window
+// (e.g. content portalled into a `window.open` popup), so check `nodeType` instead.
+// See https://github.com/radix-ui/primitives/issues/4219
+function isNode(target: EventTarget | null): target is Node {
+  return typeof (target as Node | null)?.nodeType === 'number';
+}
+
 /**
  * Listens for `pointerdown` outside a react subtree. We detect the start of the interaction on
  * `pointerdown`, then wait for `click` so external code can intercept later mouse events.
@@ -372,8 +379,7 @@ function usePointerDownOutside(
 
       const target = event.target;
       const isDismissableSurface =
-        target instanceof Node &&
-        [...dismissableSurfaces].some((surface) => surface.contains(target as Node));
+        isNode(target) && [...dismissableSurfaces].some((surface) => surface.contains(target));
 
       if (!isDismissableSurface) {
         interceptedOutsideInteractionEventsRef.current.set(event.type, true);
