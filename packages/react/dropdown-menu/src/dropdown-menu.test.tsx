@@ -285,6 +285,97 @@ describe('ref stability', () => {
   });
 });
 
+describe('trigger pointer interactions', () => {
+  afterEach(cleanupModal);
+
+  // Regression tests for https://github.com/radix-ui/primitives/issues/4221
+  it('opens on pointerdown for mouse', () => {
+    render(<DropdownMenuTest />);
+    const trigger = screen.getByText(TRIGGER_TEXT);
+    fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0 });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('opens on click for touch', () => {
+    render(<DropdownMenuTest />);
+    const trigger = screen.getByText(TRIGGER_TEXT);
+    fireEvent.pointerDown(trigger, { pointerType: 'touch', button: 0 });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('opens on click for pen', () => {
+    render(<DropdownMenuTest />);
+    const trigger = screen.getByText(TRIGGER_TEXT);
+    fireEvent.pointerDown(trigger, { pointerType: 'pen', button: 0 });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('does not open on pointerdown for touch followed by pointercancel (scroll)', () => {
+    render(<DropdownMenuTest />);
+    const trigger = screen.getByText(TRIGGER_TEXT);
+    fireEvent.pointerDown(trigger, { pointerType: 'touch', button: 0 });
+    fireEvent.pointerCancel(trigger, { pointerType: 'touch' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('toggles closed on a touch tap when open', async () => {
+    render(<DropdownMenuTest />);
+    const trigger = screen.getByText(TRIGGER_TEXT);
+    fireEvent.pointerDown(trigger, { pointerType: 'touch', button: 0 });
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(screen.getByRole('menu')).toBeInTheDocument());
+    fireEvent.pointerDown(trigger, { pointerType: 'touch', button: 0 });
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('toggles closed on a mouse click when open', async () => {
+    render(<DropdownMenuTest />);
+    const trigger = screen.getByText(TRIGGER_TEXT);
+    fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0 });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(screen.getByRole('menu')).toBeInTheDocument());
+    fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0 });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('does not open on right click', () => {
+    render(<DropdownMenuTest />);
+    const trigger = screen.getByText(TRIGGER_TEXT);
+    fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 2 });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('does not open on ctrl click', () => {
+    render(<DropdownMenuTest />);
+    const trigger = screen.getByText(TRIGGER_TEXT);
+    fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0, ctrlKey: true });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('does not open when disabled', () => {
+    render(
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger disabled>{TRIGGER_TEXT}</DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content>
+            <DropdownMenu.Item>{ITEM_TEXT}</DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>,
+    );
+    const trigger = screen.getByText(TRIGGER_TEXT);
+    fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0 });
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
 describe('DropdownMenu.Trigger', () => {
   afterEach(cleanupModal);
 
