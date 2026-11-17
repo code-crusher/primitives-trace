@@ -197,16 +197,18 @@ const RadioGroupItemTrigger = /* @__PURE__ */ React.forwardRef<
   const isArrowKeyPressedRef = React.useRef(false);
 
   React.useEffect(() => {
+    // Listen in the capture phase so `isArrowKeyPressedRef` is already set by the
+    // time roving focus synchronously moves focus during the keydown (target/bubble) phase.
     const handleKeyDown = (event: KeyboardEvent) => {
       if (ARROW_KEYS.includes(event.key)) {
         isArrowKeyPressedRef.current = true;
       }
     };
     const handleKeyUp = () => (isArrowKeyPressedRef.current = false);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, true);
     document.addEventListener('keyup', handleKeyUp);
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
       document.removeEventListener('keyup', handleKeyUp);
     };
   }, []);

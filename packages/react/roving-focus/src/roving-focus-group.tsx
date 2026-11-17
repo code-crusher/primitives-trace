@@ -329,11 +329,9 @@ const RovingFocusGroupItem = /* @__PURE__ */ React.forwardRef<
                   : candidateNodes.slice(currentIndex + 1);
               }
 
-              /**
-               * Imperative focus during keydown is risky so we prevent React's batching updates
-               * to avoid potential bugs. See: https://github.com/facebook/react/issues/20332
-               */
-              setTimeout(() => focusFirst(candidateNodes));
+              // Focus synchronously so a keypress can't be swallowed by a macrotask
+              // boundary (see https://github.com/radix-ui/primitives/issues/4136).
+              focusFirst(candidateNodes);
             }
           })}
         >

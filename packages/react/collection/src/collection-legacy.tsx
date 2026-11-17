@@ -2,6 +2,7 @@ import * as React from 'react';
 import { createContextScope } from '@radix-ui/react-context';
 import { useComposedRefs } from '@radix-ui/react-compose-refs';
 import { createSlot, type Slot } from '@radix-ui/react-slot';
+import { useLayoutEffect } from '@radix-ui/react-use-layout-effect';
 
 type SlotProps = React.ComponentPropsWithoutRef<typeof Slot>;
 type CollectionElement = HTMLElement;
@@ -91,7 +92,11 @@ interface CollectionProps extends SlotProps {
       const composedRefs = useComposedRefs(forwardedRef, ref);
       const context = useCollectionContext(ITEM_SLOT_NAME, scope);
 
-      React.useEffect(() => {
+      // Register in a layout effect so the item map is up to date synchronously
+      // after every commit. A passive effect would leave `getItems()` (used e.g.
+      // by roving focus to resolve arrow-key candidates) reading a stale map
+      // until effects flush.
+      useLayoutEffect(() => {
         context.itemMap.set(ref, { ref, ...(itemData as unknown as ItemData) });
         return () => void context.itemMap.delete(ref);
       });
