@@ -19,6 +19,7 @@ type RadioUserClick = {
 
 type RadioContextValue = {
   checked: boolean;
+  defaultChecked: boolean | undefined;
   disabled: boolean | undefined;
   required: boolean | undefined;
   name: string | undefined;
@@ -42,6 +43,7 @@ const [RadioProviderImpl, useRadioContext] = createRadioContext<RadioContextValu
 
 interface RadioProviderProps {
   checked?: boolean | undefined;
+  defaultChecked?: boolean | undefined;
   required?: boolean | undefined;
   disabled?: boolean | undefined;
   name?: string | undefined;
@@ -55,6 +57,7 @@ function RadioProvider(props: ScopedProps<RadioProviderProps>) {
   const {
     __scopeRadio,
     checked = false,
+    defaultChecked,
     children,
     disabled,
     form,
@@ -80,6 +83,7 @@ function RadioProvider(props: ScopedProps<RadioProviderProps>) {
 
   const context: RadioContextValue = {
     checked,
+    defaultChecked,
     disabled,
     required,
     name,
@@ -267,6 +271,7 @@ const RadioBubbleInput = /* @__PURE__ */ React.forwardRef<HTMLInputElement, Radi
     const {
       control,
       checked,
+      defaultChecked,
       required,
       disabled,
       name,
@@ -345,7 +350,10 @@ const RadioBubbleInput = /* @__PURE__ */ React.forwardRef<HTMLInputElement, Radi
       <Primitive.input
         type="radio"
         aria-hidden
-        defaultChecked={defaultCheckedRef.current}
+        // The default the form restores the input to. It follows the group's
+        // latest `defaultValue` so a reset doesn't restore the value the group
+        // was mounted with.
+        defaultChecked={defaultChecked ?? defaultCheckedRef.current}
         required={required}
         disabled={disabled}
         name={name}

@@ -40,6 +40,11 @@ type RadioGroupContextValue = {
   required: boolean;
   disabled: boolean;
   value: string | null;
+  /**
+   * The value the form restores the group to when it is reset. `undefined` for
+   * a controlled group, whose reset value is the value it was mounted with.
+   */
+  defaultValue: string | null | undefined;
   onValueChange(value: string): void;
 };
 
@@ -89,13 +94,22 @@ const RadioGroup = /* @__PURE__ */ React.forwardRef<RadioGroupElement, RadioGrou
     const [control, setControl] = React.useState<RadioGroupElement | null>(null);
     const composedRefs = useComposedRefs(forwardedRef, setControl);
 
-    const initialValueRef = React.useRef(value);
+    const isControlled = valueProp !== undefined;
+    // The value to restore when the associated form is reset. An uncontrolled
+    // group follows the latest `defaultValue`, like a native radio restores its
+    // current `defaultChecked` content attribute. A controlled group restores
+    // the value it was mounted with, since its consumer owns the state.
+    const resetValueRef = React.useRef(value);
+    if (!isControlled) {
+      resetValueRef.current = defaultValue ?? null;
+    }
+
     React.useEffect(() => {
       const associatedForm = form
         ? control?.ownerDocument.getElementById(form)
         : control?.closest('form');
       if (associatedForm instanceof HTMLFormElement) {
-        const reset = () => setValue(initialValueRef.current);
+        const reset = () => setValue(resetValueRef.current);
         associatedForm.addEventListener('reset', reset);
         return () => associatedForm.removeEventListener('reset', reset);
       }
@@ -109,6 +123,9 @@ const RadioGroup = /* @__PURE__ */ React.forwardRef<RadioGroupElement, RadioGrou
         required={required}
         disabled={disabled}
         value={value}
+        // `undefined` for controlled groups, which keep the hidden input's
+        // mount-time `defaultChecked` like they keep their mount-time value.
+        defaultValue={isControlled ? undefined : (defaultValue ?? null)}
         onValueChange={setValue}
       >
         <RovingFocusGroup.Root
@@ -163,6 +180,9 @@ function RadioGroupItemProvider(props: ScopedProps<RadioGroupItemProviderProps>)
     <RadioProvider
       {...radioScope}
       checked={context.value === value}
+      defaultChecked={
+        context.defaultValue === undefined ? undefined : context.defaultValue === value
+      }
       disabled={isDisabled}
       required={context.required}
       name={context.name}

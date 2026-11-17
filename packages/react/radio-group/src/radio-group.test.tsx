@@ -637,6 +637,104 @@ describe('RadioGroup', () => {
         act(() => fireEvent.click(screen.getByText('Reset')));
         radios.forEach((radio) => expect(radio).toHaveAttribute('aria-checked', 'false'));
       });
+
+      // regression test for https://github.com/radix-ui/primitives/issues/4155
+      it('should restore the latest `defaultValue` selection when the form is reset', () => {
+        const { rerender } = render(
+          <form>
+            <ClassicRadioGroup name="pet" defaultValue="1" />
+            <button type="reset">Reset</button>
+          </form>,
+        );
+
+        const radios = screen.getAllByRole(RADIO_ROLE);
+        act(() => fireEvent.click(radios[1]!));
+        expect(radios[1]).toHaveAttribute('aria-checked', 'true');
+
+        // e.g. React 19 resetting the form after a form action, where the
+        // submitted values become the new defaults.
+        rerender(
+          <form>
+            <ClassicRadioGroup name="pet" defaultValue="2" />
+            <button type="reset">Reset</button>
+          </form>,
+        );
+
+        act(() => fireEvent.click(screen.getByText('Reset')));
+        expect(radios[0]).toHaveAttribute('aria-checked', 'false');
+        expect(radios[1]).toHaveAttribute('aria-checked', 'true');
+      });
+
+      it('should not change its selection when `defaultValue` changes', () => {
+        const { rerender } = render(
+          <form>
+            <ClassicRadioGroup name="pet" defaultValue="1" />
+          </form>,
+        );
+
+        const radios = screen.getAllByRole(RADIO_ROLE);
+        act(() => fireEvent.click(radios[2]!));
+
+        rerender(
+          <form>
+            <ClassicRadioGroup name="pet" defaultValue="2" />
+          </form>,
+        );
+
+        expect(radios[2]).toHaveAttribute('aria-checked', 'true');
+        expect(radios[1]).toHaveAttribute('aria-checked', 'false');
+      });
+
+      it('should submit the latest `defaultValue` after the form is reset', () => {
+        const { rerender, container } = render(
+          <form>
+            <ClassicRadioGroup name="pet" defaultValue="1" />
+            <button type="reset">Reset</button>
+          </form>,
+        );
+
+        const form = container.querySelector('form')!;
+        const radios = screen.getAllByRole(RADIO_ROLE);
+        act(() => fireEvent.click(radios[1]!));
+        expect(new FormData(form).get('pet')).toBe('2');
+
+        rerender(
+          <form>
+            <ClassicRadioGroup name="pet" defaultValue="2" />
+            <button type="reset">Reset</button>
+          </form>,
+        );
+
+        act(() => fireEvent.click(screen.getByText('Reset')));
+        expect(new FormData(form).get('pet')).toBe('2');
+      });
+
+      it('should keep the submitted values when React resets the form after a form action', async () => {
+        function App({ defaultValue }: { defaultValue: string }) {
+          return (
+            <form action={async () => {}}>
+              <ClassicRadioGroup name="pet" defaultValue={defaultValue} />
+              <button type="submit">Save</button>
+            </form>
+          );
+        }
+
+        const { rerender, container } = render(<App defaultValue="1" />);
+        const form = container.querySelector('form')!;
+        const radios = screen.getAllByRole(RADIO_ROLE);
+        act(() => fireEvent.click(radios[1]!));
+
+        // React 19 resets a form after its action finishes. Consumers keep the
+        // submitted values by making them the new defaults.
+        rerender(<App defaultValue="2" />);
+        await act(async () => {
+          form.requestSubmit();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+
+        expect(radios[1]).toHaveAttribute('aria-checked', 'true');
+        expect(new FormData(form).get('pet')).toBe('2');
+      });
     });
 
     describe('controlled', () => {
