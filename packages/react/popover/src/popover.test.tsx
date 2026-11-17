@@ -1,6 +1,7 @@
 import * as React from 'react';
+import userEvent from '@testing-library/user-event';
 import type { RenderResult } from '@testing-library/react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import * as Popover from './popover';
 
@@ -729,6 +730,79 @@ function cleanupModal() {
   // A modal popover sets this on the `body` and only restores it on close.
   document.body.style.pointerEvents = '';
 }
+
+// Regression test for https://github.com/radix-ui/primitives/issues/4128
+describe('tabbing out of the content', () => {
+  afterEach(cleanupModal);
+
+  const FIRST_TEXT = 'First';
+  const LAST_TEXT = 'Last';
+  const BEFORE_TEXT = 'Before';
+  const AFTER_TEXT = 'After';
+
+  function TabbingHarness({ modal, loop }: { modal?: boolean; loop?: boolean }) {
+    return (
+      <div>
+        <button>{BEFORE_TEXT}</button>
+        <Popover.Root modal={modal} defaultOpen>
+          <Popover.Trigger>{TRIGGER_TEXT}</Popover.Trigger>
+          <Popover.Content loop={loop}>
+            <button>{FIRST_TEXT}</button>
+            <button>{LAST_TEXT}</button>
+          </Popover.Content>
+        </Popover.Root>
+        <button>{AFTER_TEXT}</button>
+      </div>
+    );
+  }
+
+  it('moves focus past the last control when non-modal', async () => {
+    render(<TabbingHarness modal={false} />);
+    screen.getByRole('button', { name: LAST_TEXT }).focus();
+
+    await userEvent.tab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: AFTER_TEXT })).toHaveFocus());
+  });
+
+  it('moves focus before the first control when shift-tabbing a non-modal popover', async () => {
+    render(<TabbingHarness modal={false} />);
+    screen.getByRole('button', { name: FIRST_TEXT }).focus();
+
+    await userEvent.tab({ shift: true });
+
+    // The trigger sits directly before the content in the DOM, so it is the
+    // previous tabbable element.
+    await waitFor(() => expect(screen.getByRole('button', { name: TRIGGER_TEXT })).toHaveFocus());
+  });
+
+  it('still wraps focus at the edges of a modal popover', async () => {
+    render(<TabbingHarness modal />);
+    screen.getByRole('button', { name: LAST_TEXT }).focus();
+
+    await userEvent.tab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: FIRST_TEXT })).toHaveFocus());
+  });
+
+  it('wraps focus backwards at the edges of a modal popover', async () => {
+    render(<TabbingHarness modal />);
+    screen.getByRole('button', { name: FIRST_TEXT }).focus();
+
+    await userEvent.tab({ shift: true });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: LAST_TEXT })).toHaveFocus());
+  });
+
+  it('can opt into looping focus in a non-modal popover', async () => {
+    render(<TabbingHarness modal={false} loop />);
+    screen.getByRole('button', { name: LAST_TEXT }).focus();
+
+    await userEvent.tab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: FIRST_TEXT })).toHaveFocus());
+  });
+});
 
 // Regression test for https://github.com/radix-ui/primitives/issues/4197
 describe('handlers with a narrower parameter type than the prop', () => {

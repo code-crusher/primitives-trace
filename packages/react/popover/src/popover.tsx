@@ -302,6 +302,9 @@ const PopoverContentModal = /* @__PURE__ */ React.forwardRef<
           ref={composedRefs}
           branchNodes={branchNodes}
           branchRegistry={branchRegistry}
+          // A modal `Popover` always loops: focus is trapped, so letting Tab
+          // rest on an edge would be a dead end for keyboard users.
+          loop
           // we make sure we're not trapping once it's been closed
           // (closed !== unmounted when animating out)
           trapFocus={context.open}
@@ -407,6 +410,15 @@ interface PopoverContentImplProps
   trapFocus?: FocusScopeProps['trapped'] | undefined;
 
   /**
+   * Whether focus should loop back to the first tabbable element when tabbing
+   * forward from the last one, and to the last when shift-tabbing from the
+   * first. Defaults to `trapFocus`: a modal `Popover` always loops, while a
+   * non-modal one lets Tab move focus out of the content. Has no effect on a
+   * modal `Popover`, where focus is trapped.
+   */
+  loop?: FocusScopeProps['loop'] | undefined;
+
+  /**
    * Event handler called when auto-focusing on open.
    * Can be prevented.
    */
@@ -443,6 +455,7 @@ const PopoverContentImpl = /* @__PURE__ */ React.forwardRef<
     const {
       __scopePopover,
       trapFocus,
+      loop = trapFocus,
       onOpenAutoFocus,
       onCloseAutoFocus,
       disableOutsidePointerEvents,
@@ -475,7 +488,7 @@ const PopoverContentImpl = /* @__PURE__ */ React.forwardRef<
       <FocusScopeBranchProvider registry={branchRegistry}>
         <FocusScope
           asChild
-          loop
+          loop={loop}
           trapped={trapFocus}
           branches={branchNodes}
           onMountAutoFocus={onOpenAutoFocus}

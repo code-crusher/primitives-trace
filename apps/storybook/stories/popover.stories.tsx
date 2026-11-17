@@ -128,6 +128,22 @@ export const Modality = () => {
             defaultValue="Lorem ipsum dolor sit amet consectetur adipisicing elit. Quaerat nobis at ipsa, nihil tempora debitis maxime dignissimos non amet."
           />
         </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', flexDirection: 'column' }}>
+          <h1>Non modal (looping focus)</h1>
+          <Popover.Root>
+            <Popover.Trigger className={styles.trigger}>open</Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content className={styles.content} sideOffset={5} loop>
+                <Popover.Close className={styles.close}>close</Popover.Close>
+                <Popover.Arrow className={styles.arrow} width={20} height={10} offset={10} />
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
+          <textarea
+            style={{ width: 500, height: 100, marginTop: 10 }}
+            defaultValue="Lorem ipsum dolor sit amet consectetur adipisicing elit. Quaerat nobis at ipsa, nihil tempora debitis maxime dignissimos non amet."
+          />
+        </div>
       </div>
     </div>
   );
