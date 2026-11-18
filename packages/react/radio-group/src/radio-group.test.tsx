@@ -275,6 +275,53 @@ describe('RadioGroup', () => {
       expect(screen.queryByTestId(`${INDICATOR_TEST_ID}-2`)).toBeVisible();
     });
 
+    // Regression test for https://github.com/radix-ui/primitives/issues/4094
+    it('should check an item focused after the arrow key is released', async () => {
+      const onValueChange = vi.fn();
+      render(<ClassicRadioGroup defaultValue="1" onValueChange={onValueChange} />);
+      const radios = screen.getAllByRole(RADIO_ROLE);
+
+      await act(async () => radios[0]!.focus());
+
+      // A quick key press releases the key before `RovingFocusGroup`'s
+      // deferred focus move (a `setTimeout`) runs; the selection should
+      // still follow focus.
+      await act(async () => {
+        fireEvent.keyDown(radios[0]!, { key: 'ArrowDown' });
+        fireEvent.keyUp(radios[0]!, { key: 'ArrowDown' });
+      });
+      // Let the deferred focus move run after the key press has ended.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(radios[1]).toHaveAttribute('aria-checked', 'true');
+      expect(onValueChange).toHaveBeenCalledWith('2');
+    });
+
+    it('should not check an item focused after a non-arrow key is pressed', async () => {
+      render(<ClassicRadioGroup defaultValue="1" />);
+      const radios = screen.getAllByRole(RADIO_ROLE);
+
+      await act(async () => radios[0]!.focus());
+
+      // An arrow intent must not outlive an intervening key press of another
+      // key, so that focusing an item in between key presses stays manual. The
+      // arrow key is pressed outside the group so `RovingFocusGroup` doesn't
+      // move focus itself, keeping the test deterministic.
+      await act(async () => {
+        fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+        fireEvent.keyUp(document.body, { key: 'ArrowDown' });
+      });
+      await act(async () => {
+        fireEvent.keyDown(radios[0]!, { key: 'a' });
+        fireEvent.keyUp(radios[0]!, { key: 'a' });
+        radios[1]!.focus();
+      });
+
+      expect(radios[1]).toHaveAttribute('aria-checked', 'false');
+    });
+
     it('should not check an item that receives focus without arrow navigation', async () => {
       render(<ClassicRadioGroup />);
       const radios = screen.getAllByRole(RADIO_ROLE);

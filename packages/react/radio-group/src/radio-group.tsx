@@ -200,14 +200,13 @@ const RadioGroupItemTrigger = /* @__PURE__ */ React.forwardRef<
     const handleKeyDown = (event: KeyboardEvent) => {
       if (ARROW_KEYS.includes(event.key)) {
         isArrowKeyPressedRef.current = true;
+      } else {
+        isArrowKeyPressedRef.current = false;
       }
     };
-    const handleKeyUp = () => (isArrowKeyPressedRef.current = false);
     document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
 
@@ -233,6 +232,12 @@ const RadioGroupItemTrigger = /* @__PURE__ */ React.forwardRef<
            * arrow keys and we need to "check" it in that case. We click it to
            * "check" it (instead of updating `context.value`) so that the radio
            * change event fires.
+           *
+           * We track the arrow key on the last `keydown` rather than the
+           * `keyup` because `RovingFocusGroup` defers moving focus to a
+           * `setTimeout`, which can run after `keyup` on a quick key press.
+           * The ref keeps the intent of the last `keydown`: an arrow key
+           * sets it and any other key clears it.
            */
           if (isArrowKeyPressedRef.current) {
             ref.current?.click();
